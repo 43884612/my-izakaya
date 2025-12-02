@@ -11,11 +11,10 @@ type Product = {
   thumb: string;
 };
 
-// 解決 DYNAMIC_SERVER_USAGE 錯誤 + 強制每次請求都重新抓資料
+// 解決 DYNAMIC_SERVER_USAGE + 強制每次都重新抓資料
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// 萬一全部掛掉也不會白屏的預設資料
 const fallbackData = {
   products: [] as Product[],
   updatedAt: new Date().toISOString(),
@@ -26,7 +25,6 @@ export default async function Home() {
   let errorMessage: string | null = null;
 
   try {
-    // 自動判斷本地 / Vercel / 自訂域名
     const apiUrl =
       process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}/api/update`
@@ -39,15 +37,22 @@ export default async function Home() {
       next: { tags: ['izakaya-data'] },
     });
 
+    // 只要 HTTP 成功就先接受，不再嚴格檢查 content-type
     if (res.ok) {
-      const contentType = res.headers.get('content-type');
-      if (contentType?.includes('application/json')) {
-        data = await res.json();
-      } else {
-        errorMessage = '資料格式異常';
+      try {
+        const jsonData = await res.json();
+        // 確保 products 是陣列（防後端回傳怪東西）
+        data = {
+          products: Array.isArray(jsonData.products) ? jsonData.products : [],
+          updatedAt: jsonData.updatedAt || new Date().toISOString(),
+        };
+      } catch (parseError) {
+        console.error('JSON 解析失敗:', parseError);
+        errorMessage = '資料解析錯誤';
       }
     } else {
-      errorMessage = `API 錯誤 ${res.status}`;
+      // 只有真的 HTTP 錯誤才顯示
+      errorMessage = `伺服器錯誤 ${res.status}`;
     }
   } catch (error) {
     console.error('抓取 i珍食 資料失敗:', error);
@@ -56,6 +61,9 @@ export default async function Home() {
 
   const products: Product[] = data.products || [];
   const updatedAt = data.updatedAt || new Date().toISOString();
+
+  // 只要有商品就顯示（不管有沒有 errorMessage）
+  const hasData = products.length > 0;
 
   // 分店整理
   const stores = products.reduce((acc: any, p: Product) => {
@@ -71,8 +79,6 @@ export default async function Home() {
     return acc;
   }, {});
 
-  const hasData = products.length > 0;
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto p-6">
@@ -80,13 +86,12 @@ export default async function Home() {
           i珍食即時查詢
         </h1>
 
-        {/* 按鈕 + 正確的台灣時間 */}
         <div className="text-center mb-10">
           <RefreshButton />
           <p className="mt-4 text-lg text-gray-600 font-medium">
             最後更新：
             {new Date(updatedAt).toLocaleString('zh-TW', {
-              timeZone: 'Asia/Taipei',   // 強制台灣時區（永遠正確！）
+              timeZone: 'Asia/Taipei',
               year: 'numeric',
               month: '2-digit',
               day: '2-digit',
@@ -96,14 +101,16 @@ export default async function Home() {
               hour12: false,
             })}
           </p>
-          {errorMessage && (
+
+          {/* 錯誤訊息只在「真的沒資料」時才顯示 */}
+          {errorMessage && !hasData && (
             <p className="mt-2 text-red-500 text-sm">
-              ⚠️ {errorMessage}（晚上 7 點後才會有商品喔）
+              {errorMessage}（晚上 7 點後會有商品）
             </p>
           )}
         </div>
 
-        {/* 沒資料時顯示（白天正常、掛掉也不會白屏） */}
+        {/* 有資料就顯示商品，沒資料才顯示「非查詢時間」 */}
         {!hasData ? (
           <div className="text-center py-20">
             <p className="text-red-600 text-5xl font-bold mb-8">非查詢時間</p>
@@ -115,7 +122,6 @@ export default async function Home() {
             </div>
           </div>
         ) : (
-          /* 有資料時顯示各分店 */
           Object.entries(stores).map(([storeName, store]: [string, any]) => (
             <div
               key={storeName}
