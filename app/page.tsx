@@ -1,4 +1,4 @@
-// app/page.tsx ← 最終宇宙無敵版（直接全部蓋掉！）
+// app/page.tsx ← 真正最終版（直接全部蓋掉！）
 
 import { storeInfo } from '@/lib/stores';
 import RefreshButton from '@/components/RefreshButton';
@@ -11,7 +11,6 @@ type Product = {
   thumb: string;
 };
 
-// 解決 DYNAMIC_SERVER_USAGE + 強制每次都重新抓資料
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -37,35 +36,34 @@ export default async function Home() {
       next: { tags: ['izakaya-data'] },
     });
 
-    // 只要 HTTP 成功就先接受，不再嚴格檢查 content-type
     if (res.ok) {
+      // 先讀成 text，防 JSON 失敗
+      const text = await res.text();
       try {
-        const jsonData = await res.json();
-        // 確保 products 是陣列（防後端回傳怪東西）
+        const jsonData = JSON.parse(text);
         data = {
           products: Array.isArray(jsonData.products) ? jsonData.products : [],
           updatedAt: jsonData.updatedAt || new Date().toISOString(),
         };
       } catch (parseError) {
-        console.error('JSON 解析失敗:', parseError);
-        errorMessage = '資料解析錯誤';
+        console.error('JSON parse 失敗:', parseError, 'Raw text:', text.substring(0, 200));
+        errorMessage = '解析錯誤';
       }
     } else {
-      // 只有真的 HTTP 錯誤才顯示
-      errorMessage = `伺服器錯誤 ${res.status}`;
+      errorMessage = `HTTP ${res.status}`;
     }
   } catch (error) {
-    console.error('抓取 i珍食 資料失敗:', error);
-    errorMessage = '連線異常';
+    console.error('Fetch 錯誤:', error);
+    errorMessage = '連線失敗';
   }
 
-  const products: Product[] = data.products || [];
-  const updatedAt = data.updatedAt || new Date().toISOString();
+  // 強制用當下時間（解決卡住問題）
+  const currentTime = new Date().toISOString();
+  const updatedAt = data.updatedAt || currentTime;
 
-  // 只要有商品就顯示（不管有沒有 errorMessage）
+  const products: Product[] = data.products || [];
   const hasData = products.length > 0;
 
-  // 分店整理
   const stores = products.reduce((acc: any, p: Product) => {
     const info = storeInfo[p.sid] || { name: `未知分店 ${p.sid}`, addr: '地址不詳' };
     if (!acc[info.name]) {
@@ -102,15 +100,13 @@ export default async function Home() {
             })}
           </p>
 
-          {/* 錯誤訊息只在「真的沒資料」時才顯示 */}
           {errorMessage && !hasData && (
             <p className="mt-2 text-red-500 text-sm">
-              {errorMessage}（晚上 7 點後會有商品）
+              ⚠️ {errorMessage}（現在應該有資料，試試更新）
             </p>
           )}
         </div>
 
-        {/* 有資料就顯示商品，沒資料才顯示「非查詢時間」 */}
         {!hasData ? (
           <div className="text-center py-20">
             <p className="text-red-600 text-5xl font-bold mb-8">非查詢時間</p>
