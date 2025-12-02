@@ -1,4 +1,4 @@
-// app/page.tsx ← 最終完美首頁（直接全部蓋掉！）
+// app/page.tsx ← 你原本的最穩版本（直接全部蓋掉！）
 
 'use client';
 
@@ -14,44 +14,20 @@ type Product = {
   thumb: string;
 };
 
-// 從 localStorage 讀取使用者選擇的店家 sid
-const getSelectedSids = (): string[] => {
-  if (typeof window === 'undefined') return [];
-  const saved = localStorage.getItem('my-izakaya-sids');
-  return saved ? JSON.parse(saved) : [];
-};
-
 const fetcher = async (url: string) => {
   const res = await fetch(url, { cache: 'no-store' });
   const text = await res.text();
-
   if (text.startsWith('<!doctype') || text.includes('Error')) {
     throw new Error('API 錯誤頁面');
   }
-
-  try {
-    const jsonData = JSON.parse(text);
-    if (!Array.isArray(jsonData.products)) {
-      throw new Error('無效資料格式');
-    }
-    return {
-      products: jsonData.products,
-      updatedAt: jsonData.updatedAt || new Date().toISOString(),
-    };
-  } catch (e) {
-    console.error('JSON 解析失敗:', e);
-    throw new Error('資料解析錯誤');
-  }
+  const jsonData = JSON.parse(text);
+  return {
+    products: Array.isArray(jsonData.products) ? jsonData.products : [],
+    updatedAt: jsonData.updatedAt || new Date().toISOString(),
+  };
 };
 
 export default function Home() {
-  const [selectedSids, setSelectedSids] = useState<string[]>([]);
-
-  // 載入使用者選擇的店家
-  useEffect(() => {
-    setSelectedSids(getSelectedSids());
-  }, []);
-
   const { data, error, mutate, isLoading } = useSWR('/api/update', fetcher, {
     refreshInterval: 60000,
     revalidateOnFocus: true,
@@ -68,93 +44,63 @@ export default function Home() {
   const updatedAt = data?.updatedAt || new Date().toISOString();
   const hasData = products.length > 0;
 
-  // 過濾：只顯示使用者選的店家
+  // 讀取 localStorage 的自選店家
+  const [selectedSids, setSelectedSids] = useState<string[]>([]);
+  useEffect(() => {
+    const saved = localStorage.getItem('my-izakaya-sids');
+    if (saved) setSelectedSids(JSON.parse(saved));
+  }, []);
+
+  // 過濾只顯示選的店
   const filteredProducts = selectedSids.length > 0
     ? products.filter(p => selectedSids.includes(p.sid))
     : products;
 
-  const filteredHasData = filteredProducts.length > 0;
-
-  // 分店整理
+  // 整理分店
   const stores = filteredProducts.reduce((acc: any, p: Product) => {
-    const store = allStores.find(s => s.sid === p.sid) || { name: `未知分店 ${p.sid}`, addr: '地址不詳' };
-    if (!acc[store.name]) {
-      acc[store.name] = {
-        addr: store.addr,
-        map: `https://www.google.com/maps/search/${encodeURIComponent(store.addr)}`,
-        products: [],
-      };
-    }
-    acc[store.name].products.push(p);
+    const storeName = p.sid; // 暫時用 sid 當店名（之後會從 stores.json 讀）
+    if (!acc[storeName]) acc[storeName] = { products: [], addr: '未知地址', map: '#' };
+    acc[storeName].products.push(p);
     return acc;
   }, {});
 
-  // 預載全台店家資料（用於顯示店名地址）
-  const [allStores, setAllStores] = useState<any[]>([]);
-  useEffect(() => {
-    fetch('/stores.json').then(r => r.json()).then(setAllStores);
-  }, []);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-2xl">載入中...</p>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p>載入中...</p></div>;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto p-6">
-        <h1 className="text-4xl font-bold text-center mb-6 text-gray-800">
-          i珍食即時查詢
-        </h1>
+        <h1 className="text-4xl font-bold text-center mb-6 text-gray-800">i珍食即時查詢</h1>
 
         <div className="text-center mb-10">
           <RefreshButton onClick={handleRefresh} loading={manualLoading} />
           <p className="mt-4 text-lg text-gray-600 font-medium">
-            最後更新：
-            {new Date(updatedAt).toLocaleString('zh-TW', {
+            最後更新：{new Date(updatedAt).toLocaleString('zh-TW', {
               timeZone: 'Asia/Taipei',
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
+              year: 'numeric', month: '2-digit', day: '2-digit',
+              hour: '2-digit', minute: '2-digit', second: '2-digit',
               hour12: false,
             })}
           </p>
-          {error && <p className="text-red-500">抓取失敗，試試更新</p>}
+          {error && <p className="text-red-500 mt-2">抓取失敗，試試更新</p>}
         </div>
 
-        {!filteredHasData ? (
+        {!hasData ? (
           <div className="text-center py-20">
-            <p className="text-red-600 text-5xl font-bold mb-8">
-              {selectedSids.length === 0 ? '請先去管理頁面加入店家' : '目前無資料'}
-            </p>
-            {selectedSids.length === 0 && (
-              <a href="/manage" className="bg-blue-600 text-white px-8 py-4 rounded-lg text-xl">
-                點我設定店家
-              </a>
-            )}
-            <div className="space-y-6 mt-10">
+            <p className="text-red-600 text-5xl font-bold mb-8">非查詢時間</p>
+            <div className="space-y-6">
               <p className="text-6xl text-orange-500 font-bold">8折</p>
               <p className="text-3xl text-gray-700">19:00 ∼ 19:59</p>
               <p className="text-7xl text-red-600 font-bold mt-10">65折</p>
               <p className="text-3xl text-gray-700">20:00 ∼ 03:00</p>
             </div>
+            <a href="/manage" className="mt-10 inline-block bg-blue-600 text-white px-8 py-4 rounded-lg text-xl">
+              去設定想查的店家
+            </a>
           </div>
         ) : (
           Object.entries(stores).map(([storeName, store]: [string, any]) => (
             <div key={storeName} className="bg-white rounded-2xl shadow-xl p-8 mb-12 border border-gray-200">
-              <h2 className="text-3xl font-bold mb-3 text-gray-800">{storeName}</h2>
-              <p className="text-gray-600 mb-6">
-                地址：
-                <a href={store.map} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline ml-2">
-                  {store.addr}
-                </a>
-              </p>
+              <h2 className="text-3xl font-bold mb-3">{storeName}</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
                 {store.products.map((p: Product, i: number) => (
                   <div key={i} className="border rounded-xl overflow-hidden shadow hover:shadow-2xl transition">
