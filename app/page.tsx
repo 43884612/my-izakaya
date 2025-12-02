@@ -1,4 +1,4 @@
-// app/page.tsx ← 真正最終版（直接全部蓋掉！）
+// app/page.tsx ← 真正最終版（修好 401 + 按鈕 + 時間）
 
 import { storeInfo } from '@/lib/stores';
 import RefreshButton from '@/components/RefreshButton';
@@ -36,9 +36,11 @@ export default async function Home() {
       next: { tags: ['izakaya-data'] },
     });
 
-    if (res.ok) {
-      // 先讀成 text，防 JSON 失敗
-      const text = await res.text();
+    // 先讀 text，防 fetch bug
+    const text = await res.text();
+    if (text.startsWith('<!doctype') || text.includes('Error')) {
+      errorMessage = 'API 回傳錯誤頁面';
+    } else {
       try {
         const jsonData = JSON.parse(text);
         data = {
@@ -46,22 +48,17 @@ export default async function Home() {
           updatedAt: jsonData.updatedAt || new Date().toISOString(),
         };
       } catch (parseError) {
-        console.error('JSON parse 失敗:', parseError, 'Raw text:', text.substring(0, 200));
-        errorMessage = '解析錯誤';
+        console.error('Parse 失敗:', parseError);
+        errorMessage = '解析失敗';
       }
-    } else {
-      errorMessage = `HTTP ${res.status}`;
     }
   } catch (error) {
     console.error('Fetch 錯誤:', error);
     errorMessage = '連線失敗';
   }
 
-  // 強制用當下時間（解決卡住問題）
-  const currentTime = new Date().toISOString();
-  const updatedAt = data.updatedAt || currentTime;
-
   const products: Product[] = data.products || [];
+  const updatedAt = data.updatedAt || new Date().toISOString();
   const hasData = products.length > 0;
 
   const stores = products.reduce((acc: any, p: Product) => {
@@ -102,7 +99,7 @@ export default async function Home() {
 
           {errorMessage && !hasData && (
             <p className="mt-2 text-red-500 text-sm">
-              ⚠️ {errorMessage}（現在應該有資料，試試更新）
+              ⚠️ {errorMessage}（試試更新或等 1 分鐘）
             </p>
           )}
         </div>
