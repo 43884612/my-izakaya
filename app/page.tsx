@@ -15,10 +15,17 @@ export const revalidate = 300; // 每 5 分鐘自動更新（全域設定，比 
 
 export default async function Home() {
   // 直接用相對路徑，Server Component 專用寫法，永遠不會出錯！
-  const res = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/update`, {
-    // 這裡不需要 next: { revalidate } 了，因為上面已經全域設定
-    cache: 'no-store', // 每次都抓最新（搭配按鈕使用最爽）
-  });
+
+  // app/page.tsx 裡的 fetch 部分，改成這樣：
+  const res = await fetch(
+    process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}/api/update`
+      : 'http://localhost:3000/api/update',
+    { 
+      cache: 'no-store',
+      // next: { revalidate: 300 }  // 可以保留或刪除，都沒差
+    }
+  );
 
   const data = await res.json();
   const products: Product[] = data.products || [];
