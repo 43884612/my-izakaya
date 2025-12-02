@@ -1,4 +1,4 @@
-// app/page.tsx ← 最終完美版（直接全部蓋掉！）
+// app/page.tsx ← 真正最終正確版（直接蓋掉！）
 
 'use client';
 
@@ -35,7 +35,6 @@ export default function Home() {
   const [storeMap, setStoreMap] = useState<Map<string, StoreInfo>>(new Map());
   const [selectedSids, setSelectedSids] = useState<string[]>([]);
 
-  // 載入全台店家對照表 + 使用者選擇
   useEffect(() => {
     fetch('/stores.json')
       .then(r => r.json())
@@ -64,14 +63,12 @@ export default function Home() {
   const products: Product[] = data?.products || [];
   const updatedAt = data?.updatedAt || new Date().toISOString();
 
-  // 只顯示使用者選的店
   const filteredProducts = selectedSids.length > 0
     ? products.filter(p => selectedSids.includes(p.sid))
     : products;
 
   const hasData = filteredProducts.length > 0;
 
-  // 整理成店家為單位
   const stores = filteredProducts.reduce((acc: any, p: Product) => {
     const info = storeMap.get(p.sid) || { name: `未知店家 ${p.sid}`, addr: '地址不詳' };
     if (!acc[info.name]) {
@@ -85,7 +82,13 @@ export default function Home() {
     return acc;
   }, {});
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><p className="text-2xl>載入中...</p></div>;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-2xl">載入中...</p>   {/* 這行修好了！ */}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -128,6 +131,7 @@ export default function Home() {
                   {store.addr}
                 </a>
               </p>
+
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
                 {store.products.map((p: Product, i: number) => (
                   <div key={i} className="border rounded-xl overflow-hidden shadow hover:shadow-2xl transition">
