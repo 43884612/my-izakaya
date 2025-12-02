@@ -1,5 +1,6 @@
-// app/page.tsx ← 真正最終版（修好 401 + 按鈕 + 時間）
+'use client'; // 變成 Client Component，解決 refresh bug
 
+import { useState, useEffect } from 'react';
 import { storeInfo } from '@/lib/stores';
 import RefreshButton from '@/components/RefreshButton';
 
@@ -11,51 +12,53 @@ type Product = {
   thumb: string;
 };
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 const fallbackData = {
   products: [] as Product[],
   updatedAt: new Date().toISOString(),
 };
 
-export default async function Home() {
-  let data = fallbackData;
-  let errorMessage: string | null = null;
+export default function Home() {
+  const [data, setData] = useState(fallbackData);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  try {
-    const apiUrl =
-      process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}/api/update`
-        : process.env.NEXT_PUBLIC_URL
-          ? `${process.env.NEXT_PUBLIC_URL}/api/update`
-          : 'http://localhost:3000/api/update';
+  const fetchData = async () => {
+    setLoading(true);
+    setErrorMessage(null);
 
-    const res = await fetch(apiUrl, {
-      cache: 'no-store',
-      next: { tags: ['izakaya-data'] },
-    });
+    try {
+      const apiUrl =
+        process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}/api/update`
+          : process.env.NEXT_PUBLIC_URL
+            ? `${process.env.NEXT_PUBLIC_URL}/api/update`
+            : 'http://localhost:3000/api/update';
 
-    // 先讀 text，防 fetch bug
-    const text = await res.text();
-    if (text.startsWith('<!doctype') || text.includes('Error')) {
-      errorMessage = 'API 回傳錯誤頁面';
-    } else {
-      try {
+      const res = await fetch(apiUrl, {
+        cache: 'no-store',
+      });
+
+      const text = await res.text();
+      if (text.startsWith('<!doctype') || text.includes('Error')) {
+        setErrorMessage('API 錯誤頁面');
+      } else {
         const jsonData = JSON.parse(text);
-        data = {
+        setData({
           products: Array.isArray(jsonData.products) ? jsonData.products : [],
           updatedAt: jsonData.updatedAt || new Date().toISOString(),
-        };
-      } catch (parseError) {
-        console.error('Parse 失敗:', parseError);
-        errorMessage = '解析失敗';
+        });
       }
+    } catch (error) {
+      console.error('Fetch 錯誤:', error);
+      setErrorMessage('連線失敗');
     }
-  } catch (error) {
-    console.error('Fetch 錯誤:', error);
-    errorMessage = '連線失敗';
-  }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const products: Product[] = data.products || [];
   const updatedAt = data.updatedAt || new Date().toISOString();
@@ -74,6 +77,14 @@ export default async function Home() {
     return acc;
   }, {});
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-xl">載入中...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto p-6">
@@ -82,7 +93,7 @@ export default async function Home() {
         </h1>
 
         <div className="text-center mb-10">
-          <RefreshButton />
+          <RefreshButton onClick={fetchData} /> {/* 傳 onClick 給按鈕 */}
           <p className="mt-4 text-lg text-gray-600 font-medium">
             最後更新：
             {new Date(updatedAt).toLocaleString('zh-TW', {
@@ -99,7 +110,7 @@ export default async function Home() {
 
           {errorMessage && !hasData && (
             <p className="mt-2 text-red-500 text-sm">
-              ⚠️ {errorMessage}（試試更新或等 1 分鐘）
+              ⚠️ {errorMessage}（試試更新）
             </p>
           )}
         </div>

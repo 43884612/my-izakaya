@@ -1,19 +1,18 @@
-// components/RefreshButton.tsx ← 修好按鈕不更新問題
+// components/RefreshButton.tsx ← 接收 onClick，解決按鈕不更新
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-export default function RefreshButton() {
-  const router = useRouter();
+interface RefreshButtonProps {
+  onClick: () => void;
+}
+
+export default function RefreshButton({ onClick }: RefreshButtonProps) {
   const [loading, setLoading] = useState(false);
 
   const handleRefresh = async () => {
     setLoading(true);
-    // 強制清快取 + 刷新
-    router.refresh();
-    // 加個小延遲，確保資料載入
-    await new Promise(r => setTimeout(r, 500));
+    await onClick(); // 呼叫父組件的 fetchData
     setLoading(false);
   };
 
