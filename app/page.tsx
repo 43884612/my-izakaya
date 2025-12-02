@@ -1,6 +1,7 @@
-'use client'; // 變成 Client Component，解決 refresh bug
+'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import useSWR from 'swr';
 import { storeInfo } from '@/lib/stores';
 import RefreshButton from '@/components/RefreshButton';
 
@@ -12,57 +13,44 @@ type Product = {
   thumb: string;
 };
 
-const fallbackData = {
-  products: [] as Product[],
-  updatedAt: new Date().toISOString(),
+// 🚀 最穩定寫法：使用相對路徑
+const API_URL = "/api/update";
+
+const fetcher = async (url: string) => {
+  const res = await fetch(url, { cache: 'no-store' });
+  const text = await res.text();
+  if (text.startsWith('<!doctype') || text.includes('Error')) {
+    throw new Error('API 錯誤頁面');
+  }
+  const jsonData = JSON.parse(text);
+  if (!Array.isArray(jsonData.products)) {
+    throw new Error('無效資料');
+  }
+  return {
+    products: jsonData.products,
+    updatedAt: jsonData.updatedAt || new Date().toISOString(),
+  };
 };
 
 export default function Home() {
-  const [data, setData] = useState(fallbackData);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { data, error, mutate, isLoading } = useSWR(API_URL, fetcher, {
+    refreshInterval: 60000,
+    revalidateOnFocus: true,
+    dedupingInterval: 10000,
+  });
 
-  const fetchData = async () => {
-    setLoading(true);
-    setErrorMessage(null);
+  const [manualLoading, setManualLoading] = useState(false);
 
-    try {
-      const apiUrl =
-        process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}/api/update`
-          : process.env.NEXT_PUBLIC_URL
-            ? `${process.env.NEXT_PUBLIC_URL}/api/update`
-            : 'http://localhost:3000/api/update';
-
-      const res = await fetch(apiUrl, {
-        cache: 'no-store',
-      });
-
-      const text = await res.text();
-      if (text.startsWith('<!doctype') || text.includes('Error')) {
-        setErrorMessage('API 錯誤頁面');
-      } else {
-        const jsonData = JSON.parse(text);
-        setData({
-          products: Array.isArray(jsonData.products) ? jsonData.products : [],
-          updatedAt: jsonData.updatedAt || new Date().toISOString(),
-        });
-      }
-    } catch (error) {
-      console.error('Fetch 錯誤:', error);
-      setErrorMessage('連線失敗');
-    }
-
-    setLoading(false);
+  const handleRefresh = async () => {
+    setManualLoading(true);
+    await mutate();
+    setManualLoading(false);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const products: Product[] = data.products || [];
-  const updatedAt = data.updatedAt || new Date().toISOString();
+  const products: Product[] = data?.products || [];
+  const updatedAt = data?.updatedAt || new Date().toISOString();
   const hasData = products.length > 0;
+  const errorMessage = error ? error.message : null;
 
   const stores = products.reduce((acc: any, p: Product) => {
     const info = storeInfo[p.sid] || { name: `未知分店 ${p.sid}`, addr: '地址不詳' };
@@ -77,7 +65,7 @@ export default function Home() {
     return acc;
   }, {});
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <p className="text-xl">載入中...</p>
@@ -93,7 +81,7 @@ export default function Home() {
         </h1>
 
         <div className="text-center mb-10">
-          <RefreshButton onClick={fetchData} /> {/* 傳 onClick 給按鈕 */}
+          <RefreshButton onClick={handleRefresh} loading={manualLoading} />
           <p className="mt-4 text-lg text-gray-600 font-medium">
             最後更新：
             {new Date(updatedAt).toLocaleString('zh-TW', {
@@ -110,7 +98,7 @@ export default function Home() {
 
           {errorMessage && !hasData && (
             <p className="mt-2 text-red-500 text-sm">
-              ⚠️ {errorMessage}（試試更新）
+              ⚠️ {errorMessage}（自動重試中...）
             </p>
           )}
         </div>

@@ -1,24 +1,17 @@
-// components/RefreshButton.tsx ← 接收 onClick，解決按鈕不更新
+// components/RefreshButton.tsx
 'use client';
 
 import { useState } from 'react';
 
 interface RefreshButtonProps {
   onClick: () => void;
+  loading: boolean;
 }
 
-export default function RefreshButton({ onClick }: RefreshButtonProps) {
-  const [loading, setLoading] = useState(false);
-
-  const handleRefresh = async () => {
-    setLoading(true);
-    await onClick(); // 呼叫父組件的 fetchData
-    setLoading(false);
-  };
-
+export default function RefreshButton({ onClick, loading }: RefreshButtonProps) {
   return (
     <button
-      onClick={handleRefresh}
+      onClick={onClick}
       disabled={loading}
       className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-bold py-5 px-12 rounded-xl text-2xl shadow-2xl transform hover:scale-105 transition-all duration-200"
     >
